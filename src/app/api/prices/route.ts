@@ -8,39 +8,44 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Symbols parameter is required' }, { status: 400 });
   }
 
+  // Get API key from environment variable
+  const apiKey = process.env.FINNHUB_API_KEY;
+
+  if (!apiKey) {
+    console.error('FINNHUB_API_KEY is not set');
+    return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
+  }
+
   const symbols = symbolsParam.split(',').map(s => s.toUpperCase());
 
   try {
     const results = [];
+
+    // Finnhub allows 60 requests/minute, so we can fetch faster
+    // But we'll add a small delay to be safe (100ms between requests)
     for (const symbol of symbols) {
       try {
-        // Add a delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Small delay to avoid hitting rate limits
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-        // Fetch directly from Yahoo Finance API
-        // Note: This is an unofficial endpoint and might be rate limited or changed.
-        const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          }
-        });
+        // Fetch from Finnhub API
+        const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`);
 
         if (!res.ok) {
           throw new Error(`Failed to fetch: ${res.statusText}`);
         }
 
         const data = await res.json();
-        const result = data.chart?.result?.[0];
 
-        if (!result || !result.meta) {
-          throw new Error('Invalid data format');
+        // Finnhub returns: { c: currentPrice, h: high, l: low, o: open, pc: previousClose, t: timestamp }
+        // We use 'c' (current price)
+        if (data.c === 0 || data.c === null || data.c === undefined) {
+          throw new Error('Invalid or missing price data');
         }
-
-        const price = result.meta.regularMarketPrice;
 
         results.push({
           symbol,
-          price,
+          price: data.c,
         });
       } catch (error: any) {
         console.error(`Error fetching ${symbol}:`, error);
