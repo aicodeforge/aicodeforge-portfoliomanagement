@@ -3,6 +3,7 @@
 import { usePortfolioStore } from "@/lib/store";
 import Link from "next/link";
 import { useState } from "react";
+import ActualHoldings from "@/components/ActualHoldings";
 
 export default function AnalyticsPage() {
 	const { getSummary } = usePortfolioStore();
@@ -119,7 +120,7 @@ export default function AnalyticsPage() {
 
 			{/* Top 5 Holdings */}
 			<div className="card">
-				<h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '16px' }}>Top 5 Holdings</h3>
+				<h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '16px' }}>Top 5 Holdings (Direct)</h3>
 				{top5.map((asset, index) => {
 					const value = asset.quantity * asset.price;
 					const percentage = (value / summary.totalValue) * 100;
@@ -159,6 +160,9 @@ export default function AnalyticsPage() {
 					);
 				})}
 			</div>
+
+			{/* Actual Top Holdings (Look-through) */}
+			<ActualHoldings />
 		</div>
 	);
 }
