@@ -4,6 +4,7 @@ import { usePortfolioStore } from "@/lib/store";
 import Link from "next/link";
 import { useState } from "react";
 import ActualHoldings from "@/components/ActualHoldings";
+import AiAdviceButton from "@/components/AiAdviceButton";
 
 export default function AnalyticsPage() {
 	const { getSummary } = usePortfolioStore();
@@ -47,6 +48,9 @@ export default function AnalyticsPage() {
 					{summary.assets.length} assets
 				</p>
 			</div>
+
+			{/* AI Advice Button */}
+			<AiAdviceButton />
 
 			{/* By Asset Type */}
 			<div className="card">
