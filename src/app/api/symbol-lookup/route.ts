@@ -1,0 +1,126 @@
+import { NextResponse } from 'next/server';
+import yahooFinance from 'yahoo-finance2';
+
+// Helper function to determine asset type and location based on symbol
+function classifySymbol(symbol: string, profileData?: any) {
+	const upperSymbol = symbol.toUpperCase();
+
+	// Crypto detection
+	if (upperSymbol.includes('-USD') || upperSymbol.includes('BTC') || upperSymbol.includes('ETH')) {
+		return { type: 'coin', location: 'no us' };
+	}
+
+	// Bond ETF detection (common bond ETF symbols)
+	const bondETFs = ['BND', 'AGG', 'TLT', 'IEF', 'SHY', 'LQD', 'HYG', 'MUB', 'VCIT', 'VCSH', 'BSV', 'BIV', 'BLV', 'VBIAX'];
+	if (bondETFs.includes(upperSymbol)) {
+		return { type: 'bond', location: 'us' };
+	}
+
+	// International/Non-US ETF detection
+	const internationalETFs = ['VXUS', 'VEA', 'VWO', 'IEMG', 'EFA', 'IXUS', 'ACWI', 'VTIAX'];
+	if (internationalETFs.includes(upperSymbol)) {
+		return { type: 'stock', location: 'no us' };
+	}
+
+	// Check if it's from profile data
+	if (profileData) {
+		const country = profileData.country || '';
+		const isUS = country === 'US' || country === 'United States';
+		return { type: 'stock', location: isUS ? 'us' : 'no us' };
+	}
+
+	// Default to US stock
+	return { type: 'stock', location: 'us' };
+}
+
+export async function GET(request: Request) {
+	const { searchParams } = new URL(request.url);
+	const symbol = searchParams.get('symbol');
+
+	if (!symbol) {
+		return NextResponse.json({ error: 'Symbol parameter is required' }, { status: 400 });
+	}
+
+	const apiKey = process.env.FINNHUB_API_KEY;
+	const upperSymbol = symbol.toUpperCase();
+
+	let price = null;
+	let profile = null;
+	let classification = classifySymbol(upperSymbol);
+
+	try {
+		// 1. Try Finnhub first if API key is present
+		if (apiKey) {
+			try {
+				const quoteRes = await fetch(`https://finnhub.io/api/v1/quote?symbol=${upperSymbol}&token=${apiKey}`);
+
+				if (quoteRes.ok) {
+					const quoteData = await quoteRes.json();
+
+					if (quoteData.c && quoteData.c > 0) {
+						price = quoteData.c;
+
+						// Try to get company profile for better classification
+						try {
+							const profileRes = await fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${upperSymbol}&token=${apiKey}`);
+							if (profileRes.ok) {
+								profile = await profileRes.json();
+								classification = classifySymbol(upperSymbol, profile);
+							}
+						} catch (error) {
+							console.log('Could not fetch profile, using default classification');
+						}
+					}
+				}
+			} catch (finnhubError) {
+				console.error('Finnhub fetch failed:', finnhubError);
+			}
+		}
+
+		// 2. Fallback to Yahoo Finance if price is still null
+		if (!price) {
+			console.log(`Finnhub failed or returned no price for ${upperSymbol}, trying Yahoo Finance...`);
+			try {
+				// yahoo-finance2 v3 requires instantiation
+				const yf = new yahooFinance();
+				const result = await yf.quote(upperSymbol);
+
+				if (result && result.regularMarketPrice) {
+					price = result.regularMarketPrice;
+
+					// Refine classification based on Yahoo data if possible
+					if (result.quoteType === 'MUTUALFUND') {
+						// Mutual funds are usually stocks unless specified otherwise, but let's keep simple
+						// We could check currency or other fields for location
+					}
+				}
+			} catch (yfError) {
+				console.error('Yahoo Finance fetch failed:', yfError);
+			}
+		}
+
+		return NextResponse.json({
+			symbol: upperSymbol,
+			price,
+			type: classification.type,
+			location: classification.location,
+			profile: profile ? {
+				name: profile.name,
+				country: profile.country,
+				exchange: profile.exchange,
+			} : null,
+		});
+	} catch (error: any) {
+		console.error(`Error looking up ${symbol}:`, error);
+
+		// Even on error, return classification
+		const classification = classifySymbol(upperSymbol);
+		return NextResponse.json({
+			symbol: upperSymbol,
+			price: null,
+			type: classification.type,
+			location: classification.location,
+			error: error.message,
+		});
+	}
+}

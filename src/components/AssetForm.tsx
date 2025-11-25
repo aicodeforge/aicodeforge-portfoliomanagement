@@ -14,7 +14,7 @@ export default function AssetForm() {
 
 	const [symbol, setSymbol] = useState('');
 	const [quantity, setQuantity] = useState('');
-	const [price, setPrice] = useState<number | null>(null);
+	const [price, setPrice] = useState('');
 	const [type, setType] = useState<AssetType>('stock');
 	const [location, setLocation] = useState<AssetLocation>('us');
 	const [isFetchingPrice, setIsFetchingPrice] = useState(false);
@@ -25,54 +25,65 @@ export default function AssetForm() {
 			if (asset) {
 				setSymbol(asset.symbol);
 				setQuantity(asset.quantity.toString());
-				setPrice(asset.price);
+				setPrice(asset.price.toString());
 				setType(asset.type);
 				setLocation(asset.location);
 			}
 		}
 	}, [id, assets]);
 
-	// Fetch price when symbol changes
+	// Fetch price, type, and location when symbol changes
 	useEffect(() => {
-		const fetchPrice = async () => {
+		const fetchSymbolData = async () => {
 			if (!symbol || symbol.length < 1) {
-				setPrice(null);
 				return;
 			}
 
+			// Only fetch if price is empty (don't overwrite manual entry if user is typing)
+			// But if it's a new symbol entry (length changed significantly or just started), we might want to fetch
+			// For now, let's fetch if price is empty or if we just typed the symbol
+
 			setIsFetchingPrice(true);
 			try {
-				const res = await fetch(`/api/prices?symbols=${symbol}`);
+				const res = await fetch(`/api/symbol-lookup?symbol=${symbol}`);
 				const data = await res.json();
-				if (data.prices && data.prices[0] && data.prices[0].price) {
-					setPrice(data.prices[0].price);
-				} else {
-					setPrice(null);
+
+				if (data.price) {
+					setPrice(data.price.toString());
+				}
+
+				// Auto-populate type and location if not editing an existing asset
+				if (!id) {
+					if (data.type) {
+						setType(data.type);
+					}
+					if (data.location) {
+						setLocation(data.location);
+					}
 				}
 			} catch (error) {
-				console.error('Failed to fetch price', error);
-				setPrice(null);
+				console.error('Failed to fetch symbol data', error);
 			} finally {
 				setIsFetchingPrice(false);
 			}
 		};
 
-		const timeoutId = setTimeout(fetchPrice, 500); // Debounce
+		const timeoutId = setTimeout(fetchSymbolData, 500); // Debounce
 		return () => clearTimeout(timeoutId);
-	}, [symbol]);
+	}, [symbol, id]);
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
 
 		if (!price) {
-			alert('Please wait for the price to load or enter a valid symbol');
+			alert('Please enter a price');
 			return;
 		}
 
 		const assetData = {
-			symbol,
+			symbol: symbol.toUpperCase(),
 			quantity: parseFloat(quantity),
-			price,
+			price: parseFloat(price),
 			type,
 			location,
 		};
@@ -124,16 +135,24 @@ export default function AssetForm() {
 			</div>
 
 			<div style={{ marginBottom: '16px' }}>
-				<label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>Current Price</label>
-				<div className="input" style={{
-					backgroundColor: 'var(--background)',
-					color: price ? 'var(--text-primary)' : 'var(--text-secondary)',
-					display: 'flex',
-					alignItems: 'center',
-					justifyContent: 'space-between'
-				}}>
-					{isFetchingPrice ? 'Loading...' : price ? `$${price.toFixed(2)}` : 'Enter symbol to fetch price'}
-					{isFetchingPrice && <span style={{ fontSize: '12px' }}>⏳</span>}
+				<label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
+					Current Price {isFetchingPrice && <span style={{ fontSize: '12px', fontWeight: 'normal' }}> (Fetching...)</span>}
+				</label>
+				<div style={{ position: 'relative' }}>
+					<span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+					<input
+						type="number"
+						step="any"
+						className="input"
+						style={{ paddingLeft: '24px' }}
+						placeholder="0.00"
+						value={price}
+						onChange={(e) => setPrice(e.target.value)}
+						required
+					/>
+				</div>
+				<div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+					Auto-fetched from API, but you can edit manually.
 				</div>
 			</div>
 
