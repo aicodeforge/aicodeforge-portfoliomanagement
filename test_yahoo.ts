@@ -31,6 +31,16 @@ async function test() {
 			}
 		}
 
+		const currencies = ['KRW=X', 'USDKRW=X'];
+		for (const curr of currencies) {
+			console.log(`Fetching rate for ${curr}...`);
+			try {
+				const result = await yf.quote(curr);
+				console.log(`Rate for ${curr}:`, result.regularMarketPrice);
+			} catch (e: any) {
+				console.log(`Failed for ${curr}:`, e.message);
+			}
+		}
 	} catch (e) {
 		console.error(e);
 	}

@@ -123,6 +123,24 @@ export async function GET(request: Request) {
 						// Check if it's international ETF
 						// For now default to what we had or check currency
 					}
+
+					// Currency Conversion
+					if (result.currency && result.currency !== 'USD') {
+						try {
+							// Construct exchange rate symbol (e.g., KRW=X for USD/KRW)
+							// Yahoo usually uses CURRENCY=X for USD/CURRENCY pair (amount of CURRENCY per 1 USD)
+							const exchangeSymbol = `${result.currency}=X`;
+							const rateResult = await yf.quote(exchangeSymbol);
+
+							if (rateResult && rateResult.regularMarketPrice) {
+								const rate = rateResult.regularMarketPrice;
+								console.log(`Converting ${price} ${result.currency} to USD using rate ${rate}`);
+								price = price / rate;
+							}
+						} catch (rateError) {
+							console.error(`Failed to fetch exchange rate for ${result.currency}:`, rateError);
+						}
+					}
 				}
 			} catch (yfError) {
 				console.error('Yahoo Finance fetch failed:', yfError);
