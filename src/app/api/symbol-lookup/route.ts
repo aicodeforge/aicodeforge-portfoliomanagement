@@ -83,15 +83,45 @@ export async function GET(request: Request) {
 			try {
 				// yahoo-finance2 v3 requires instantiation
 				const yf = new yahooFinance();
-				const result = await yf.quote(upperSymbol);
+				let result = null;
+
+				try {
+					result = await yf.quote(upperSymbol);
+				} catch (quoteError) {
+					console.log(`Quote failed for ${upperSymbol}, trying search...`);
+				}
+
+				// If quote failed or returned no price, try search
+				if (!result || !result.regularMarketPrice) {
+					try {
+						const searchResult = await yf.search(upperSymbol);
+						if (searchResult.quotes.length > 0) {
+							const firstMatch = searchResult.quotes[0];
+							console.log(`Found match for ${upperSymbol}: ${firstMatch.symbol}`);
+							result = await yf.quote(firstMatch.symbol as string);
+						}
+					} catch (searchError) {
+						console.error('Search failed:', searchError);
+					}
+				}
 
 				if (result && result.regularMarketPrice) {
 					price = result.regularMarketPrice;
 
-					// Refine classification based on Yahoo data if possible
-					if (result.quoteType === 'MUTUALFUND') {
-						// Mutual funds are usually stocks unless specified otherwise, but let's keep simple
-						// We could check currency or other fields for location
+					// Update symbol to the found one if it was a search result
+					if (result.symbol !== upperSymbol) {
+						// We might want to return the actual symbol found
+						// But for now let's just use the price
+					}
+
+					// Refine classification based on Yahoo data
+					if (result.currency === 'KRW' || (result.exchange && result.exchange.includes('KSC'))) {
+						classification = { type: 'stock', location: 'no us' };
+					} else if (result.quoteType === 'CRYPTOCURRENCY') {
+						classification = { type: 'coin', location: 'no us' };
+					} else if (result.quoteType === 'ETF') {
+						// Check if it's international ETF
+						// For now default to what we had or check currency
 					}
 				}
 			} catch (yfError) {
